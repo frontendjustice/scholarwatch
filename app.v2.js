@@ -1,5 +1,6 @@
 // ScholarWatch — Frontend Application
-const API = window.location.origin;
+const isGitHubPages = window.location.hostname === 'frontendjustice.github.io';
+const API = isGitHubPages ? 'https://justice-bd85-8080.nebula.me' : window.location.origin;
 
 // ===== State =====
 let results = [];

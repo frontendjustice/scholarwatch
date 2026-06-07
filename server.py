@@ -17,6 +17,7 @@ import xml.etree.ElementTree as ET
 import httpx
 import trafilatura
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -759,6 +760,19 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="ScholarWatch", lifespan=lifespan)
+
+# Allow cross-origin requests from GitHub Pages
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://frontendjustice.github.io",
+        "http://localhost:8080",
+        "https://localhost:8080",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- API Endpoints ---
 
