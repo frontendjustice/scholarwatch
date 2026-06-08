@@ -1,7 +1,7 @@
 // ScholarWatch — Supabase Frontend
 // ===== Supabase Client =====
-const SUPABASE_URL = '%%SUPABASE_URL%%';
-const SUPABASE_ANON_KEY = '%%SUPABASE_ANON_KEY%%';
+const SUPABASE_URL = 'https://zytookvpynknavpohobl.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dG9va3ZweW5rbmF2cG9ob2JsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjMzODYsImV4cCI6MjA5NjQzOTM4Nn0.2frRHPMUN4pTXm0-Aol-ZgVw6CRcvej_X6YUuEKMPnc';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ===== State =====
