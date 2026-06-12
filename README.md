@@ -1,63 +1,61 @@
-# ScholarWatch — Scholarship Screening Pipeline
+# ScholarWatch
 
-Automated pipeline that scans RSS feeds for fully-funded health-related scholarships and fellowships, using AI to screen and summarize opportunities.
+Automated health scholarship screening pipeline — scans RSS feeds, filters for fully-funded LMIC opportunities, and delivers AI-powered summaries.
 
 ## Architecture
 
+- **Backend**: Python/FastAPI + SQLite
+- **Frontend**: Vanilla HTML/CSS/JS (single-page app)
+- **Dependencies**: httpx, feedparser, beautifulsoup4, fastapi, uvicorn
+
+## Quick Start
+
+```bash
+pip install -r requirements.txt
+python server.py
 ```
-GitHub Actions (daily cron)
-      ↓ runs pipeline.py
-RSS Feeds → Scrape → AI Triage → Supabase
-                                    ↑ reads
-                              Vercel (static frontend)
+
+Then open `http://localhost:8080`.
+
+## Features
+
+- Add/remove RSS feed URLs (manual or OPML import)
+- Multi-stage screening pipeline (fetch → deduplicate → filter → score → summarize → persist)
+- AI-powered 6-sentence summaries for qualifying opportunities
+- Dashboard with search, filter, bookmark, and export
+- Newsletter generation (DOCX)
+- Deadline extraction and scoring
+
+## API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/feeds` | List all feeds |
+| POST | `/api/feeds` | Add a feed |
+| DELETE | `/api/feeds/{id}` | Delete a feed |
+| POST | `/api/feeds/{id}/toggle` | Toggle feed active state |
+| POST | `/api/feeds/opml` | Import OPML file |
+| POST | `/api/scan` | Run full scan pipeline |
+| GET | `/api/results` | Get screened results |
+| DELETE | `/api/results/{id}` | Delete a result |
+| POST | `/api/clear-db` | Clear database |
+| GET | `/api/newsletter` | Get newsletter data |
+| POST | `/api/newsletter` | Generate newsletter |
+| DELETE | `/api/newsletter` | Delete newsletter |
+| POST | `/api/bookmarks/toggle` | Toggle bookmark |
+| GET | `/api/bookmarks` | Get bookmarked results |
+
+## Project Structure
+
 ```
-
-**No server required.** Three independent services, none tied to any single platform.
-
-- **Pipeline:** Python script (`pipeline.py`) runs via GitHub Actions on a daily schedule
-- **Database:** [Supabase](https://supabase.com) (PostgreSQL) — free tier (500MB)
-- **Frontend:** Static HTML/JS deployed on [Vercel](https://vercel.com) — reads directly from Supabase via the JS client
-
-## Setup
-
-### 1. Create a Supabase project
-
-Go to [supabase.com](https://supabase.com) → New project. Copy the **Project URL** and **anon key** from Settings → API.
-
-### 2. Run the schema SQL
-
-In the Supabase SQL Editor, paste and run the contents of `supabase_schema.sql`. This creates all tables and RLS policies.
-
-### 3. Configure GitHub Secrets
-
-Add these secrets in your repo Settings → Secrets and variables → Actions:
-
-| Secret | Description |
-|--------|-------------|
-| `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_ANON_KEY` | Your Supabase anon key |
-| `AI_PROVIDER` | `anthropic` or `groq` |
-| `AI_API_KEY` | Your AI API key |
-| `AI_BASE_URL` | (optional) Custom API base URL |
-| `AI_MODEL` | (optional) Model name |
-
-### 4. Deploy frontend to Vercel
-
-1. Go to [vercel.com](https://vercel.com) → New Project → Import your GitHub repo
-2. Set build command to blank (static site) and output directory to `.`
-3. Before deploying, update `app.v3.js` — replace `%%SUPABASE_URL%%` and `%%SUPABASE_ANON_KEY%%` with your actual Supabase values
-4. Deploy
-
-### 5. Edit feeds
-
-Edit `feeds.json` to add/remove RSS feed URLs. The pipeline reads from this file.
-
-## Pipeline Flow
-
-1. **RSS Fetch** — Reads feeds from `feeds.json`, parses entries
-2. **Deduplication** — Removes entries already in the database
-3. **Keyword Gate** — Fast-rejects obvious non-scholarships (casino, loans, etc.)
-4. **Web Scraping** — Fetches full page content for survivors
-5. **AI Triage** — Scores each entry 0–5 based on scholarship relevance
-6. **AI Summary** — Generates 2–3 sentence summaries for accepted entries
-7. **Save to Supabase** — Upserts results, updates scan log
+.
+├── server.py           # FastAPI backend
+├── index.html          # SPA template
+├── app.v2.js           # Frontend logic
+├── style.css           # Styles
+├── start.sh            # Production start script
+├── run.sh              # Development run script
+├── package.json        # Node deps (for dev tooling)
+├── requirements.txt    # Python deps
+└── .gitignore
+```

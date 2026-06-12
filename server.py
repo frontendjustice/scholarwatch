@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import io
 import json
 import os
 import re
@@ -24,6 +25,7 @@ from pydantic import BaseModel
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+import docx
 
 # ===== Configuration =====
 DB_PATH = Path(__file__).parent / "scholarwatch.db"
@@ -500,7 +502,7 @@ Content: {content}
 Is this an actual scholarship/fellowship/grant ANNOUNCEMENT (not news about scholarships, not expired, not a blog post)?
 
 JSON response:
-{{"is_opportunity": true/false, "fully_funded": true/false, "open_eligibility": true/false, "health_related": true/false, "valid_deadline": true/false, "deadline_date": "YYYY-MM-DD or null"{summary_instruction}}}"""
+{{"is_opportunity": true/false, "fully_funded": true/false, "open_eligibility": true/false, "health_related": true/false, "valid_deadline": true/false, "deadline_date": "YYYY-MM-DD or null", "rejection_reason": "if is_opportunity=false, a single specific phrase explaining why (e.g. 'Restricted to Canadian citizens only', 'Business plan competition, not academic funding', 'Deadline already passed in April 2024', 'Tuition-only, no living expenses covered', 'Open only to US permanent residents')"{summary_instruction}}}"""
 
 
 async def ai_triage_entry(entry: dict, client: httpx.AsyncClient, sem: asyncio.Semaphore) -> dict:
@@ -531,7 +533,8 @@ async def ai_triage_entry(entry: dict, client: httpx.AsyncClient, sem: asyncio.S
                     if not result.get("is_opportunity", False):
                         entry["score"] = 0
                         entry["criteria"] = {}
-                        entry["rejected_reason"] = "AI: not an actual opportunity"
+                        ai_reason = result.get("rejection_reason", "").strip()
+                        entry["rejected_reason"] = ai_reason if ai_reason else "AI: not an actual opportunity"
                         return entry
 
                     entry["criteria"] = {
@@ -682,6 +685,9 @@ async def run_pipeline(progress_queue: asyncio.Queue | None = None) -> dict:
             triaged_count[0] += 1
             await _emit(progress_queue, "ai_triage_progress",
                         completed=triaged_count[0], total=total,
+                        title=result.get("title", ""),
+                        score=result.get("score", 0),
+                        rejected_reason=result.get("rejected_reason", ""),
                         message=f"AI triage: {triaged_count[0]}/{total} entries")
             return result
 
@@ -1011,6 +1017,183 @@ async def upload_opml(file: UploadFile = File(...)):
         "total_in_file": len(extracted),
         "added": added,
         "skipped_duplicates": skipped,
+    }
+
+
+# ===== Export =====
+
+def add_hyperlink(doc, url, text, color="0563C1", underline=True):
+    """Add a hyperlink to a python-docx document."""
+    paragraph = doc.add_paragraph()
+    part = paragraph.part
+    r_id = part.relate_to(url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink", is_external=True)
+    hyperlink = docx.oxml.OxmlElement("w:hyperlink")
+    hyperlink.set(docx.oxml.ns.qn("r:id"), r_id)
+    new_run = docx.oxml.OxmlElement("w:r")
+    rPr = docx.oxml.OxmlElement("w:rPr")
+    c = docx.oxml.OxmlElement("w:color")
+    c.set(docx.oxml.ns.qn("w:val"), color)
+    rPr.append(c)
+    if underline:
+        u = docx.oxml.OxmlElement("w:u")
+        u.set(docx.oxml.ns.qn("w:val"), "single")
+        rPr.append(u)
+    new_run.append(rPr)
+    new_run.text = text
+    hyperlink.append(new_run)
+    paragraph._p.append(hyperlink)
+    return paragraph
+
+
+@app.get("/api/export/csv")
+async def export_csv():
+    """Export all results as CSV with BOM for Excel compatibility."""
+    import csv, io
+
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM results ORDER BY score DESC, created_at DESC").fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    output.write("\ufeff")  # BOM for Excel UTF-8
+    writer = csv.writer(output)
+    writer.writerow(["Score", "Title", "Link", "Description", "Summary", "Deadline", "Source Feed", "Date"])
+    for r in rows:
+        d = dict(r)
+        writer.writerow([
+            d.get("score", ""),
+            d.get("title", ""),
+            d.get("link", ""),
+            d.get("description", "")[:300],
+            d.get("summary", ""),
+            d.get("deadline", ""),
+            d.get("source_feed", ""),
+            d.get("created_at", ""),
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=scholarwatch_export.csv"},
+    )
+
+
+@app.get("/api/export/docx")
+async def export_docx():
+    """Export all results as a formatted Word document."""
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM results ORDER BY score DESC, created_at DESC").fetchall()
+    conn.close()
+
+    doc = Document()
+    doc.styles["Normal"].font.name = "Calibri"
+    doc.styles["Normal"].font.size = Pt(11)
+
+    title = doc.add_heading("ScholarWatch Export", level=0)
+    doc.add_paragraph(f"Generated {datetime.now().strftime('%d %B %Y at %H:%M')}")
+    doc.add_paragraph(f"Total results: {len(rows)}")
+    doc.add_paragraph("—" * 40)
+
+    for r in rows:
+        d = dict(r)
+        score = d.get("score", 0)
+        # Score badge (coloured run)
+        score_p = doc.add_paragraph()
+        score_run = score_p.add_run(f"Score: {score}/4")
+        score_run.bold = True
+        score_run.font.size = Pt(13)
+        if score >= 4:
+            score_run.font.color.rgb = RGBColor(0x16, 0xA3, 0x4A)
+        elif score >= 3:
+            score_run.font.color.rgb = RGBColor(0xCA, 0x8A, 0x04)
+        else:
+            score_run.font.color.rgb = RGBColor(0xDC, 0x26, 0x26)
+
+        # Title
+        heading = doc.add_heading(d.get("title", "Untitled"), level=2)
+
+        # Metadata
+        meta_p = doc.add_paragraph()
+        if d.get("deadline"):
+            meta_run = meta_p.add_run(f"Deadline: {d['deadline']}")
+            meta_run.bold = True
+        if d.get("source_feed"):
+            meta_p.add_run(f"  |  Source: {d['source_feed']}")
+        if d.get("created_at"):
+            meta_p.add_run(f"  |  Added: {d['created_at']}")
+
+        # Link
+        if d.get("link"):
+            add_hyperlink(doc, d["link"], "View Original")
+
+        # Summary
+        summary = (d.get("summary") or "").strip()
+        if not summary:
+            summary = (d.get("description") or "")[:500]
+        if summary:
+            doc.add_paragraph(summary)
+
+        # Separator
+        doc.add_paragraph("· · ·")
+
+    output = io.BytesIO()
+    doc.save(output)
+    output.seek(0)
+
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={"Content-Disposition": "attachment; filename=scholarwatch_export.docx"},
+    )
+
+
+@app.get("/api/feed-stats")
+async def get_feed_stats():
+    """Return per-feed screening statistics."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT
+            f.id,
+            f.name,
+            f.url,
+            f.active,
+            f.created_at,
+            COUNT(r.id) as total_entries,
+            SUM(CASE WHEN r.score >= 3 THEN 1 ELSE 0 END) as accepted,
+            SUM(CASE WHEN r.score < 3 THEN 1 ELSE 0 END) as rejected,
+            CASE WHEN COUNT(r.id) > 0
+                THEN ROUND(100.0 * SUM(CASE WHEN r.score >= 3 THEN 1 ELSE 0 END) / COUNT(r.id), 1)
+                ELSE 0 END as acceptance_rate
+        FROM feeds f
+        LEFT JOIN results r ON f.name = r.source_feed
+        GROUP BY f.id
+        ORDER BY acceptance_rate DESC
+    """).fetchall()
+    conn.close()
+
+    stats = []
+    for r in rows:
+        d = dict(r)
+        d["active"] = bool(d["active"])
+        stats.append(d)
+
+    # Aggregate totals
+    total_feeds = sum(1 for s in stats if s["active"])
+    total_entries = sum(s["total_entries"] for s in stats)
+    total_accepted = sum(s["accepted"] for s in stats)
+    total_rejected = total_entries - total_accepted
+    overall_rate = round(100.0 * total_accepted / total_entries, 1) if total_entries > 0 else 0
+
+    return {
+        "feeds": stats,
+        "overall": {
+            "active_feeds": total_feeds,
+            "total_entries": total_entries,
+            "total_accepted": total_accepted,
+            "total_rejected": total_rejected,
+            "overall_acceptance_rate": overall_rate,
+        },
     }
 
 

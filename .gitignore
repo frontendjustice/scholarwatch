@@ -17,6 +17,9 @@ dist/
 .venv/
 venv/
 
+# Supabase vendor blob (use CDN instead)
+supabase.min.js
+
 # Node
 node_modules/
 

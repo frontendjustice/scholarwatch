@@ -1,259 +1,20 @@
-// ScholarWatch — Supabase Frontend
-// ===== Supabase Client =====
-const SUPABASE_URL = 'https://zytookvpynknavpohobl.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp5dG9va3ZweW5rbmF2cG9ob2JsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjMzODYsImV4cCI6MjA5NjQzOTM4Nn0.2frRHPMUN4pTXm0-Aol-ZgVw6CRcvej_X6YUuEKMPnc';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// ===== State =====
-let results = [];
-let feeds = [];
-let bookmarks = new Set();
-
-// ===== View Switching =====
-document.querySelectorAll('.nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const view = btn.dataset.view;
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById(`view-${view}`).classList.add('active');
-    if (view === 'dashboard') loadResults();
-    if (view === 'bookmarked') loadBookmarks();
-    if (view === 'feeds') loadFeeds();
-  });
-});
-
-function toast(msg, type = 'success') {
-  const el = document.createElement('div');
-  el.className = `toast ${type}`;
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 3500);
-}
-
-// ===== Stats =====
-async function loadStats() {
-  try {
-    const { count: feedCount } = await supabase
-      .from('feeds').select('*', { count: 'exact', head: true }).eq('active', true);
-    const { count: screened } = await supabase
-      .from('results').select('*', { count: 'exact', head: true });
-    const { count: accepted } = await supabase
-      .from('results').select('*', { count: 'exact', head: true }).gte('score', 3);
-    const { data: lastScan } = await supabase
-      .from('scan_log').select('finished_at').order('id', { ascending: false }).limit(1);
-
-    document.getElementById('stat-feeds').textContent = feedCount || 0;
-    document.getElementById('stat-screened').textContent = screened || 0;
-    document.getElementById('stat-accepted').textContent = accepted || 0;
-    document.getElementById('stat-lastrun').textContent = lastScan?.[0]?.finished_at || 'Never';
-  } catch (e) {
-    console.error('Stats:', e);
-  }
-}
-
-// ===== Results =====
-async function loadResults() {
-  try {
-    const { data } = await supabase
-      .from('results')
-      .select('*')
-      .order('score', { ascending: false })
-      .order('created_at', { ascending: false });
-    results = data || [];
-  } catch {
-    results = [];
-  }
-  renderResults();
-  // Sync bookmarks
-  try {
-    const { data: bmData } = await supabase.from('bookmarks').select('result_id');
-    bookmarks = new Set((bmData || []).map(r => r.result_id));
-    renderResults();
-  } catch { /* ignore */ }
-}
-
-function renderResults() {
-  const empty = document.getElementById('dash-empty');
-  const wrap = document.getElementById('dash-results');
-  const body = document.getElementById('results-body');
-
-  const scoreFilter = document.getElementById('filter-score').value;
-  const deadlineFilter = document.getElementById('filter-deadline').value;
-  const search = document.getElementById('filter-search').value.toLowerCase();
-
-  let filtered = results.filter(r => {
-    if (scoreFilter && String(r.score) !== scoreFilter) return false;
-    if (search && !r.title.toLowerCase().includes(search)) return false;
-    if (deadlineFilter) {
-      const dl = r.deadline ? new Date(r.deadline) : null;
-      const now = new Date();
-      const in30 = new Date(now.getTime() + 30 * 86400000);
-      if (deadlineFilter === 'upcoming' && (!dl || dl < now || dl > in30)) return false;
-      if (deadlineFilter === 'open' && (!dl || dl < now)) return false;
-      if (deadlineFilter === 'expired' && (!dl || dl >= now)) return false;
-    }
-    return true;
-  });
-
-  if (filtered.length === 0) {
-    empty.style.display = '';
-    wrap.style.display = 'none';
-    return;
-  }
-
-  empty.style.display = 'none';
-  wrap.style.display = '';
-
-  body.innerHTML = filtered.map((r, i) => {
-    const dlClass = getDeadlineClass(r.deadline);
-    const dlText = r.deadline || 'Unknown';
-    return `
-      <tr>
-        <td><div class="score-badge score-${r.score}">${r.score}/5</div></td>
-        <td>
-          <div class="result-title" onclick="showDetail(${i})">${esc(r.title)}</div>
-          <div class="result-source">${esc(r.source_feed || '')}</div>
-        </td>
-        <td><span class="deadline-badge ${dlClass}">${esc(dlText)}</span></td>
-        <td><span style="font-size:12px;color:var(--text-muted)">${esc(r.source_feed || '—')}</span></td>
-        <td>
-          <a href="${esc(r.link)}" target="_blank" class="btn btn-sm btn-secondary">Open</a>
-          <button class="btn btn-sm btn-bookmark ${bookmarks.has(r.id) ? 'bookmarked' : ''}" onclick="toggleBookmark(${r.id})" title="Bookmark this scholarship">
-            ${bookmarks.has(r.id) ? '★' : '☆'}
-          </button>
-          <button type="button" class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="deleteResult(${r.id})" title="Delete this entry">🗑 Delete</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-// ===== Bookmarks =====
-async function loadBookmarks() {
-  try {
-    const { data } = await supabase
-      .from('bookmarks')
-      .select('result_id, results(*)')
-      .order('created_at', { ascending: false });
-    const list = (data || []).map(b => b.results).filter(Boolean);
-    bookmarks = new Set(list.map(r => r.id));
-    renderBookmarks(list);
-  } catch {
-    bookmarks = new Set();
-    renderBookmarks([]);
-  }
-}
-
-function renderBookmarks(bookmarkedResults) {
-  window._bookmarkedResults = bookmarkedResults;
-  const empty = document.getElementById('bookmarked-empty');
-  const wrap = document.getElementById('bookmarked-results');
-  const body = document.getElementById('bookmarked-body');
-  const count = document.getElementById('bookmarked-count');
-
-  count.textContent = `${bookmarkedResults.length} saved`;
-
-  if (bookmarkedResults.length === 0) {
-    empty.style.display = '';
-    wrap.style.display = 'none';
-    return;
-  }
-
-  empty.style.display = 'none';
-  wrap.style.display = '';
-
-  body.innerHTML = bookmarkedResults.map(r => {
-    const dlClass = getDeadlineClass(r.deadline);
-    const dlText = r.deadline || 'Unknown';
-    return `
-      <tr>
-        <td><div class="score-badge score-${r.score}">${r.score}/5</div></td>
-        <td>
-          <div class="result-title" onclick="showDetailById(${r.id})">${esc(r.title)}</div>
-          <div class="result-source">${esc(r.source_feed || '')}</div>
-        </td>
-        <td><span class="deadline-badge ${dlClass}">${esc(dlText)}</span></td>
-        <td><span style="font-size:12px;color:var(--text-muted)">${esc(r.source_feed || '—')}</span></td>
-        <td>
-          <a href="${esc(r.link)}" target="_blank" class="btn btn-sm btn-secondary">Open</a>
-          <button class="btn btn-sm btn-bookmark bookmarked" onclick="toggleBookmark(${r.id})" title="Remove bookmark">★</button>
-          <button type="button" class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="deleteResult(${r.id})" title="Delete this entry">🗑 Delete</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-async function toggleBookmark(resultId) {
-  try {
-    const { data: existing } = await supabase
-      .from('bookmarks').select('id').eq('result_id', resultId).single();
-
-    if (existing) {
-      await supabase.from('bookmarks').delete().eq('result_id', resultId);
-      bookmarks.delete(resultId);
-      toast('Bookmark removed');
-    } else {
-      await supabase.from('bookmarks').insert({ result_id: resultId });
-      bookmarks.add(resultId);
-      toast('Bookmarked');
-    }
-
-    const activeView = document.querySelector('.nav-btn.active').dataset.view;
-    if (activeView === 'dashboard') renderResults();
-    if (activeView === 'bookmarked') loadBookmarks();
-  } catch (e) {
-    toast(`Bookmark failed: ${e.message}`, 'error');
-  }
-}
-
-// ===== Delete =====
-async function deleteResult(id) {
-  if (!confirm('Delete this scholarship entry?')) return;
-  try {
-    await supabase.from('results').delete().eq('id', id);
-    bookmarks.delete(id);
-    results = results.filter(r => r.id !== id);
-    toast('Entry deleted');
-    const activeView = document.querySelector('.nav-btn.active').dataset.view;
-    if (activeView === 'dashboard') renderResults();
-    if (activeView === 'bookmarked') loadBookmarks();
-  } catch (e) {
-    toast(`Delete failed: ${e.message}`, 'error');
-  }
-}
-
-async function clearDatabase() {
-  if (!confirm('Clear ALL results and scan logs? This cannot be undone.')) return;
-  try {
-    const { data: r } = await supabase.from('results').select('id');
-    const deletedResults = r ? r.length : 0;
-    await supabase.from('results').delete().neq('id', 0);
-    const { data: s } = await supabase.from('scan_log').select('id');
-    const deletedLogs = s ? s.length : 0;
-    await supabase.from('scan_log').delete().neq('id', 0);
-
-    results = [];
-    bookmarks = new Set();
-    const msg = deletedResults > 0
-      ? `Cleared ${deletedResults} results and ${deletedLogs} scan logs`
-      : 'Database is already empty';
-    toast(msg);
-    const activeView = document.querySelector('.nav-btn.active').dataset.view;
-    if (activeView === 'dashboard') renderResults();
-    if (activeView === 'bookmarked') loadBookmarks();
-    loadStats();
-  } catch (e) {
-    toast(`Clear failed: ${e.message}`, 'error');
-  }
-}
-
-window.toggleBookmark = toggleBookmark;
-window.deleteResult = deleteResult;
-window.clearDatabase = clearDatabase;
+// ScholarWatch — Frontend Application
+const API = window.location.origin;
 
 // ===== Helpers =====
+function htmlEsc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+
+function formatDate(iso) {
+  if (!iso) return '&mdash;';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '&mdash;';
+  return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 function getDeadlineClass(dl) {
   if (!dl) return 'deadline-unknown';
   const d = new Date(dl);
@@ -264,157 +25,717 @@ function getDeadlineClass(dl) {
   return 'deadline-upcoming';
 }
 
-function esc(s) {
-  const d = document.createElement('div');
-  d.textContent = s || '';
-  return d.innerHTML;
+// Score badge SVG (colored circle with number)
+function scoreBadgeHTML(score) {
+  return '<span class="score-badge score-' + score + '">' + score + '/4</span>';
 }
 
+function toast(msg, type) {
+  type = type || 'success';
+  var el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(function () { el.remove(); }, 3500);
+}
+
+// Re-run lucide icons on newly inserted DOM nodes
+function refreshIcons() {
+  if (window.lucide) lucide.createIcons();
+}
+
+// ===== State =====
+var results = [];
+var feeds = [];
+var bookmarks = new Set();
+
+// ===== API =====
+async function api(path, opts) {
+  opts = opts || {};
+  try {
+    var res = await fetch(API + path, {
+      headers: Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {}),
+      method: opts.method || 'GET',
+      body: opts.body
+    });
+    if (!res.ok) {
+      var err = await res.json().catch(function () { return { detail: res.statusText }; });
+      throw new Error(err.detail || res.statusText);
+    }
+    return res.json();
+  } catch (e) {
+    console.error('API ' + path + ':', e);
+    throw e;
+  }
+}
+
+// ===== View Switching =====
+document.querySelectorAll('.nav-btn').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var view = btn.dataset.view;
+    document.querySelectorAll('.nav-btn').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(function (v) { v.classList.remove('active'); });
+    document.getElementById('view-' + view).classList.add('active');
+    if (view === 'dashboard') loadResults();
+    if (view === 'bookmarked') loadBookmarks();
+    if (view === 'feeds') loadFeeds();
+    if (view === 'feedstats') loadFeedStats();
+  });
+});
+
+// ===== Hamburger Menu =====
+(function () {
+  var hamburger = document.getElementById('nav-hamburger');
+  var drawer = document.getElementById('nav-drawer');
+  var overlay = document.getElementById('nav-overlay');
+
+  function close() {
+    hamburger.classList.remove('open');
+    drawer.classList.remove('open');
+    overlay.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  function open() {
+    hamburger.classList.add('open');
+    drawer.classList.add('open');
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  hamburger.addEventListener('click', function () {
+    if (drawer.classList.contains('open')) close(); else open();
+  });
+  overlay.addEventListener('click', close);
+  drawer.querySelectorAll('.nav-btn').forEach(function (btn) {
+    btn.addEventListener('click', close);
+  });
+})();
+
+// ===== Stats =====
+async function loadStats() {
+  try {
+    var data = await api('/api/stats');
+    document.getElementById('stat-feeds').textContent = data.active_feeds || 0;
+    document.getElementById('stat-screened').textContent = data.total_screened || 0;
+    document.getElementById('stat-accepted').textContent = data.total_accepted || 0;
+    document.getElementById('stat-lastrun').textContent = data.last_run || 'Never';
+  } catch (e) { /* unavailable */ }
+}
+
+// ===== Results =====
+async function loadResults() {
+  try {
+    var data = await api('/api/results');
+    results = data.results || [];
+    renderResults();
+  } catch (e) {
+    results = [];
+    renderResults();
+  }
+  // Sync bookmarks
+  try {
+    var bm = await api('/api/bookmarks');
+    bookmarks = new Set((bm.results || []).map(function (r) { return r.id; }));
+    renderResults();
+  } catch (e) { /* ignore */ }
+}
+
+// Build a single result row (table) or card (mobile)
+function resultRowHTML(r) {
+  var dlClass = getDeadlineClass(r.deadline);
+  var dlText = r.deadline || 'Unknown';
+  var isBookmarked = bookmarks.has(r.id);
+  var starCls = isBookmarked ? 'bookmarked' : '';
+  var starIcon = isBookmarked ? 'star' : 'star';
+  return {
+    table:
+      '<tr>' +
+        '<td>' + scoreBadgeHTML(r.score) + '</td>' +
+        '<td>' +
+          '<div class="result-title" onclick="showDetailById(' + r.id + ')">' + htmlEsc(r.title) + '</div>' +
+          '<div class="result-source">' + htmlEsc(r.source_feed || '') + '</div>' +
+        '</td>' +
+        '<td><span class="deadline-badge ' + dlClass + '">' + htmlEsc(dlText) + '</span></td>' +
+        '<td class="result-date">' + formatDate(r.created_at) + '</td>' +
+        '<td class="result-date">' + htmlEsc(r.source_feed || '&mdash;') + '</td>' +
+        '<td><div class="td-actions">' +
+          '<a href="' + htmlEsc(r.link) + '" target="_blank" class="btn btn-xs btn-secondary"><i data-lucide="external-link" class="btn-icon"></i> Open</a>' +
+          '<button class="btn-bookmark ' + starCls + '" onclick="toggleBookmark(' + r.id + ')" title="Bookmark"><i data-lucide="' + starIcon + '" class="btn-bookmark-icon"></i></button>' +
+          '<button class="btn-delete" onclick="deleteResult(' + r.id + ')" title="Delete"><i data-lucide="trash-2" class="btn-bookmark-icon"></i></button>' +
+        '</div></td>' +
+      '</tr>',
+    card:
+      '<div class="result-card">' +
+        '<div class="result-card-header">' +
+          scoreBadgeHTML(r.score) +
+          '<div class="result-card-body" style="flex:1">' +
+            '<div class="result-title" onclick="showDetailById(' + r.id + ')">' + htmlEsc(r.title) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="result-card-meta">' +
+          '<span class="deadline-badge ' + dlClass + '">' + htmlEsc(dlText) + '</span>' +
+          '<span>' + formatDate(r.created_at) + '</span>' +
+          '<span>' + htmlEsc(r.source_feed || '') + '</span>' +
+        '</div>' +
+        '<div class="result-card-footer">' +
+          '<a href="' + htmlEsc(r.link) + '" target="_blank" class="btn btn-xs btn-secondary"><i data-lucide="external-link" class="btn-icon"></i> Open</a>' +
+          '<button class="btn-bookmark ' + starCls + '" onclick="toggleBookmark(' + r.id + ')" title="Bookmark"><i data-lucide="' + starIcon + '" class="btn-bookmark-icon"></i></button>' +
+          '<button class="btn-delete" onclick="deleteResult(' + r.id + ')" title="Delete"><i data-lucide="trash-2" class="btn-bookmark-icon"></i></button>' +
+        '</div>' +
+      '</div>'
+  };
+}
+
+function renderResults() {
+  var empty = document.getElementById('dash-empty');
+  var wrap = document.getElementById('dash-results');
+  var body = document.getElementById('results-body');
+  var cards = document.getElementById('results-cards');
+  var countEl = document.getElementById('result-count');
+
+  // Filter
+  var scoreFilter = document.getElementById('filter-score').value;
+  var deadlineFilter = document.getElementById('filter-deadline').value;
+  var search = (document.getElementById('filter-search').value || '').toLowerCase();
+
+  var filtered = results.filter(function (r) {
+    if (scoreFilter && String(r.score) !== scoreFilter) return false;
+    if (search && !r.title.toLowerCase().includes(search)) return false;
+    if (deadlineFilter) {
+      var hasDL = !!r.deadline;
+      if (deadlineFilter === 'confirmed' && !hasDL) return false;
+      if (deadlineFilter === 'unknown' && hasDL) return false;
+    }
+    return true;
+  });
+
+  // Sort
+  var sortBy = document.getElementById('sort-by').value;
+  if (sortBy === 'recent') {
+    filtered.sort(function (a, b) { return (b.created_at || '').localeCompare(a.created_at || ''); });
+  } else {
+    filtered.sort(function (a, b) { return b.score - a.score || (b.created_at || '').localeCompare(a.created_at || ''); });
+  }
+
+  if (filtered.length === 0) {
+    empty.style.display = '';
+    wrap.style.display = 'none';
+    countEl.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  wrap.style.display = '';
+  countEl.style.display = 'inline';
+  countEl.textContent = filtered.length + ' result' + (filtered.length !== 1 ? 's' : '');
+
+  body.innerHTML = filtered.map(function (r) { return resultRowHTML(r).table; }).join('');
+  cards.innerHTML = filtered.map(function (r) { return resultRowHTML(r).card; }).join('');
+  refreshIcons();
+}
+
+// ===== Bookmarks =====
+async function loadBookmarks() {
+  try {
+    var data = await api('/api/bookmarks');
+    var list = data.results || [];
+    bookmarks = new Set(list.map(function (r) { return r.id; }));
+    renderBookmarks(list);
+  } catch (e) {
+    bookmarks = new Set();
+    renderBookmarks([]);
+  }
+}
+
+function renderBookmarks(bookmarkedResults) {
+  window._bookmarkedResults = bookmarkedResults;
+  var empty = document.getElementById('bookmarked-empty');
+  var wrap = document.getElementById('bookmarked-results');
+  var body = document.getElementById('bookmarked-body');
+  var cards = document.getElementById('bookmarked-cards');
+  var count = document.getElementById('bookmarked-count');
+
+  count.textContent = bookmarkedResults.length + ' saved';
+
+  if (bookmarkedResults.length === 0) {
+    empty.style.display = '';
+    wrap.style.display = 'none';
+    return;
+  }
+
+  empty.style.display = 'none';
+  wrap.style.display = '';
+
+  body.innerHTML = bookmarkedResults.map(function (r) { return resultRowHTML(r).table; }).join('');
+  cards.innerHTML = bookmarkedResults.map(function (r) { return resultRowHTML(r).card; }).join('');
+  refreshIcons();
+}
+
+// ===== Bookmark Toggle =====
+async function toggleBookmark(resultId) {
+  try {
+    var data = await api('/api/bookmarks/toggle', {
+      method: 'POST',
+      body: JSON.stringify({ result_id: resultId })
+    });
+    if (data.bookmarked) {
+      bookmarks.add(resultId);
+      toast('Bookmarked');
+    } else {
+      bookmarks.delete(resultId);
+      toast('Bookmark removed');
+    }
+    var activeView = document.querySelector('.nav-btn.active').dataset.view;
+    if (activeView === 'dashboard') renderResults();
+    if (activeView === 'bookmarked') loadBookmarks();
+  } catch (e) {
+    toast('Bookmark failed: ' + e.message, 'error');
+  }
+}
+
+// ===== Delete =====
+async function deleteResult(id) {
+  if (!confirm('Delete this scholarship entry?')) return;
+  try {
+    await api('/api/results/' + id, { method: 'DELETE' });
+    bookmarks.delete(id);
+    results = results.filter(function (r) { return r.id !== id; });
+    toast('Entry deleted');
+    var activeView = document.querySelector('.nav-btn.active').dataset.view;
+    if (activeView === 'dashboard') renderResults();
+    if (activeView === 'bookmarked') loadBookmarks();
+  } catch (e) {
+    toast('Delete failed: ' + e.message, 'error');
+  }
+}
+
+async function clearDatabase() {
+  if (!confirm('Clear ALL results and scan logs? This cannot be undone.')) return;
+  try {
+    var data = await api('/api/clear-db', { method: 'POST' });
+    results = [];
+    bookmarks = new Set();
+    var msg = data.deleted_results > 0
+      ? 'Cleared ' + data.deleted_results + ' results and ' + data.deleted_logs + ' scan logs'
+      : 'Database is already empty';
+    toast(msg);
+    var activeView = document.querySelector('.nav-btn.active').dataset.view;
+    if (activeView === 'dashboard') renderResults();
+    if (activeView === 'bookmarked') loadBookmarks();
+    loadStats();
+  } catch (e) {
+    toast('Clear failed: ' + e.message, 'error');
+  }
+}
+
+window.toggleBookmark = toggleBookmark;
+window.deleteResult = deleteResult;
+window.clearDatabase = clearDatabase;
+
 // ===== Detail Modal =====
-window.showDetail = function(idx) {
-  const r = results[idx];
+window.showDetail = function (idx) {
+  var r = results[idx];
   if (!r) return;
   showDetailForResult(r);
 };
 
-window.showDetailById = function(id) {
-  const r = results.find(x => x.id === id);
+window.showDetailById = function (id) {
+  var r = results.find(function (x) { return x.id === id; });
   if (r) { showDetailForResult(r); return; }
   if (window._bookmarkedResults) {
-    const bm = window._bookmarkedResults.find(x => x.id === id);
+    var bm = window._bookmarkedResults.find(function (x) { return x.id === id; });
     if (bm) { showDetailForResult(bm); return; }
   }
 };
 
 function showDetailForResult(r) {
-  document.getElementById('modal-score').innerHTML = `<div class="score-badge score-${r.score}" style="width:56px;height:56px;font-size:20px">${r.score}/5</div>`;
+  document.getElementById('modal-score').innerHTML = '<span class="score-badge score-' + r.score + '" style="width:48px;height:48px;font-size:20px">' + r.score + '/4</span>';
   document.getElementById('modal-title').textContent = r.title;
-  document.getElementById('modal-deadline').textContent = r.deadline ? `Deadline: ${r.deadline}` : 'Deadline: Unknown';
-  document.getElementById('modal-source').textContent = `Source: ${r.source_feed || '—'}`;
+  document.getElementById('modal-deadline').innerHTML = '<i data-lucide="calendar" style="width:14px;height:14px;color:var(--text-muted)"></i> ' + (r.deadline ? 'Deadline: ' + r.deadline : 'Deadline: Unknown');
+  document.getElementById('modal-source').innerHTML = '<i data-lucide="globe" style="width:14px;height:14px;color:var(--text-muted)"></i> ' + (r.source_feed || '&mdash;');
   document.getElementById('modal-link').href = r.link || '#';
   document.getElementById('modal-summary').textContent = r.summary || r.description || 'No summary available.';
 
-  // Parse criteria JSON
-  let criteria = {};
-  try {
-    criteria = typeof r.criteria_json === 'string' ? JSON.parse(r.criteria_json) : (r.criteria_json || {});
-  } catch { criteria = {}; }
-
-  const criteriaItems = [
-    { label: 'Funding', key: 'funding_type', value: criteria.funding_type },
-    { label: 'Country Eligibility', key: 'country_eligibility', value: criteria.country_eligibility },
-    { label: 'Reason', key: 'reason', value: criteria.reason },
+  var criteria = [
+    { label: 'Fully Funded', key: 'fully_funded' },
+    { label: 'Open to LMIC / Everyone', key: 'open_eligibility' },
+    { label: 'Health-Related / All Courses', key: 'health_related' },
+    { label: 'Valid Deadline', key: 'valid_deadline' }
   ];
-  document.getElementById('modal-criteria').innerHTML = criteriaItems.map(c =>
-    `<div class="modal-criterion ${c.value ? 'criterion-pass' : 'criterion-fail'}">${c.value ? '✓' : '—'} ${c.label}: ${c.value || 'Not specified'}</div>`
-  ).join('');
+  document.getElementById('modal-criteria').innerHTML = criteria.map(function (c) {
+    var pass = r.criteria && r.criteria[c.key];
+    return '<div class="modal-criterion ' + (pass ? 'criterion-pass' : 'criterion-fail') + '"><i data-lucide="' + (pass ? 'check' : 'x') + '" style="width:16px;height:16px;flex-shrink:0"></i> ' + htmlEsc(c.label) + '</div>';
+  }).join('');
 
   document.getElementById('modal-overlay').style.display = '';
+  refreshIcons();
 }
 
-document.getElementById('modal-close').addEventListener('click', () => {
+document.getElementById('modal-close').addEventListener('click', function () {
   document.getElementById('modal-overlay').style.display = 'none';
 });
-document.getElementById('modal-overlay').addEventListener('click', (e) => {
+document.getElementById('modal-overlay').addEventListener('click', function (e) {
   if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
 });
 
 // ===== Filters =====
-['filter-score', 'filter-deadline', 'filter-search'].forEach(id => {
+['filter-score', 'filter-deadline', 'filter-search', 'sort-by'].forEach(function (id) {
   document.getElementById(id).addEventListener('input', renderResults);
   document.getElementById(id).addEventListener('change', renderResults);
 });
 
-// ===== Scan Button (GitHub Actions info) =====
-document.getElementById('btn-run-scan').addEventListener('click', () => {
-  const logBody = document.getElementById('scan-log-body');
-  const statusEl = document.getElementById('scan-status');
-  const loading = document.getElementById('dash-loading');
-  const empty = document.getElementById('dash-empty');
-  const wrap = document.getElementById('dash-results');
-
-  empty.style.display = 'none';
-  wrap.style.display = 'none';
-  loading.style.display = '';
-  logBody.innerHTML = '';
-  statusEl.textContent = '';
-
-  addLogEntry(logBody, { stage: 'notice', label: '⚡ GitHub Actions', detail: 'Scans run daily at 6pm WAT via GitHub Actions' });
-  addLogEntry(logBody, { stage: 'notice', label: '🔗 Manual trigger', detail: 'Visit GitHub Actions → "ScholarWatch Daily Scan" → Run workflow' });
-  addLogEntry(logBody, { stage: 'notice', label: '⚙️ Configure feeds', detail: 'Edit feeds.json in the GitHub repo to add/remove RSS feeds' });
-
-  setTimeout(() => { loading.style.display = 'none'; empty.style.display = ''; loadStats(); }, 1200);
-});
-
-const STAGE_LABELS = {
-  start:          '📡 Starting scan',
-  notice:         'ℹ️ Notice',
-  complete:       '🏁 Scan finished',
-  error:          '❌ Error',
+// ===== Run Scan (SSE streaming) =====
+var STAGE_LABELS = {
+  start:          'Starting scan',
+  fetch_rss:      'Fetching RSS feeds',
+  dedup:          'Deduplicating entries',
+  keyword_filter: 'Running keyword filter',
+  scrape:         'Scraping full pages',
+  ai_triage_start:'Starting AI triage',
+  ai_triage_done: 'AI triage complete',
+  summaries:      'Generating summaries',
+  notice:         'Notice',
+  complete:       'Scan finished',
+  error:          'Error'
 };
 
-function addLogEntry(container, { stage, label, detail }) {
-  const div = document.createElement('div');
-  div.className = `log-entry log-${stage}`;
-  div.innerHTML = `<span class="log-label">${label}</span><span class="log-detail">${detail}</span>`;
+function addLogEntry(container, entry) {
+  var div = document.createElement('div');
+  div.className = 'log-entry log-' + entry.stage;
+  div.innerHTML = '<span class="log-label">' + htmlEsc(entry.label) + '</span><span class="log-detail">' + htmlEsc(entry.detail) + '</span>';
   container.appendChild(div);
   container.parentElement.scrollTop = container.parentElement.scrollHeight;
 }
 
-document.getElementById('btn-refresh').addEventListener('click', () => {
+var btnRunScan = document.getElementById('btn-run-scan');
+if (btnRunScan) {
+  btnRunScan.addEventListener('click', async function () {
+    var btn = btnRunScan;
+    var loading = document.getElementById('dash-loading');
+    var empty = document.getElementById('dash-empty');
+    var wrap = document.getElementById('dash-results');
+    var logBody = document.getElementById('scan-log-body');
+    var statusEl = document.getElementById('scan-status');
+    var progressEl = document.getElementById('scan-progress-bar');
+
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader" class="btn-icon spinner-inline"></i> Scanning...';
+    refreshIcons();
+    empty.style.display = 'none';
+    wrap.style.display = 'none';
+    loading.style.display = '';
+    logBody.innerHTML = '';
+    statusEl.textContent = 'Starting...';
+    progressEl.style.display = 'none';
+
+    try {
+      var response = await fetch(API + '/api/scan', { method: 'POST' });
+      if (!response.ok) {
+        var err = await response.json().catch(function () { return { detail: response.statusText }; });
+        throw new Error(err.detail || response.statusText);
+      }
+
+      var reader = response.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          if (!line.startsWith('data: ')) continue;
+          try {
+            var event = JSON.parse(line.slice(6));
+            var stage = event.stage;
+
+            if (stage === 'ai_triage_start') progressEl.style.display = '';
+            if (stage === 'ai_triage_done' || stage === 'complete' || stage === 'error') progressEl.style.display = 'none';
+
+            if (stage === 'complete') {
+              statusEl.textContent = 'Complete!';
+              var r = event.results || event.result || {};
+              addLogEntry(logBody, {
+                stage: 'complete',
+                label: STAGE_LABELS['complete'],
+                detail: 'Feeds: ' + (r.feeds_checked || 0) + ' | Found: ' + (r.entries_found || 0) + ' | Accepted: ' + (r.accepted || 0) + ' | Marginal: ' + (r.marginal || 0) + ' | AI Rejected: ' + (r.ai_rejected || 0)
+              });
+              setTimeout(function () {
+                loading.style.display = 'none';
+                loadResults();
+                loadStats();
+                toast('Scan complete: ' + (r.accepted || 0) + ' scholarships found');
+              }, 800);
+              break;
+            }
+
+            if (stage === 'error') {
+              statusEl.textContent = 'Error';
+              addLogEntry(logBody, { stage: 'error', label: 'Error', detail: event.message });
+              break;
+            }
+
+            if (stage === 'ai_triage_progress' && event.score === 0 && event.rejected_reason) {
+              statusEl.textContent = event.message || stage;
+              addLogEntry(logBody, {
+                stage: 'ai_triage_progress',
+                label: 'AI: ' + htmlEsc(event.title || 'Entry'),
+                detail: 'Rejected — ' + htmlEsc(event.rejected_reason)
+              });
+            } else {
+              statusEl.textContent = event.message || stage;
+              addLogEntry(logBody, {
+                stage: stage,
+                label: STAGE_LABELS[stage] || stage,
+                detail: event.message || ''
+              });
+            }
+          } catch (e) { /* skip bad lines */ }
+        }
+      }
+    } catch (e) {
+      loading.style.display = 'none';
+      empty.style.display = '';
+      toast('Scan failed: ' + e.message, 'error');
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = '<i data-lucide="play" class="btn-icon"></i> Run Scan Now';
+    refreshIcons();
+  });
+}
+
+// Also wire up the empty-state "Run First Scan" button
+var btnEmptyScan = document.getElementById('btn-empty-scan');
+if (btnEmptyScan) {
+  btnEmptyScan.addEventListener('click', function () {
+    // Switch to dashboard view and trigger scan
+    document.querySelector('.nav-btn[data-view="dashboard"]').click();
+    setTimeout(function () {
+      var scanBtn = document.getElementById('btn-run-scan');
+      if (scanBtn && !scanBtn.disabled) scanBtn.click();
+    }, 200);
+  });
+}
+
+document.getElementById('btn-refresh').addEventListener('click', function () {
   loadResults();
   loadStats();
 });
 
-document.getElementById('btn-clear-db').addEventListener('click', () => {
-  clearDatabase();
-});
+// ===== Export =====
+function exportCSV() {
+  var a = document.createElement('a');
+  a.href = '/api/export/csv';
+  a.download = 'scholarwatch_export.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast('CSV download started');
+}
 
-document.getElementById('btn-clear-db-feeds').addEventListener('click', () => {
-  clearDatabase();
-});
+function exportWord() {
+  var a = document.createElement('a');
+  a.href = '/api/export/docx';
+  a.download = 'scholarwatch_export.docx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  toast('Word download started');
+}
 
-// ===== Feeds Management (read-only from Supabase) =====
+window.exportCSV = exportCSV;
+window.exportWord = exportWord;
+
+// ===== Feeds Management =====
 async function loadFeeds() {
   try {
-    const { data } = await supabase
-      .from('feeds')
-      .select('*')
-      .order('created_at');
-    feeds = data || [];
-  } catch {
+    var data = await api('/api/feeds');
+    feeds = data.feeds || [];
+    renderFeeds();
+  } catch (e) {
     feeds = [];
+    renderFeeds();
   }
-  renderFeeds();
 }
 
 function renderFeeds() {
-  const list = document.getElementById('feeds-list');
+  var list = document.getElementById('feeds-list');
   if (feeds.length === 0) {
-    list.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📡</div>
-        <h3>No feeds configured</h3>
-        <p>Add feeds by editing <code>feeds.json</code> in the GitHub repo, or insert directly into the feeds table via the Supabase SQL Editor.</p>
-      </div>`;
+    list.innerHTML =
+      '<div class="empty-state">' +
+        '<i data-lucide="rss" class="empty-icon"></i>' +
+        '<p class="empty-title">No feeds configured</p>' +
+        '<p class="empty-hint">Add your first RSS feed URL above to start monitoring.</p>' +
+      '</div>';
+    refreshIcons();
     return;
   }
-  list.innerHTML = feeds.map(f => `
-    <div class="feed-item">
-      <div class="feed-status ${f.active ? 'active' : 'inactive'}"></div>
-      <div class="feed-info">
-        <div class="feed-name">${esc(f.name)}</div>
-        <div class="feed-url-text">${esc(f.url)}</div>
-      </div>
-    </div>
-  `).join('');
+  list.innerHTML = feeds.map(function (f) {
+    return '<div class="feed-item">' +
+      '<div class="feed-status ' + (f.active ? 'active' : 'inactive') + '"></div>' +
+      '<div class="feed-info">' +
+        '<div class="feed-name">' + htmlEsc(f.name) + '</div>' +
+        '<div class="feed-url-text">' + htmlEsc(f.url) + '</div>' +
+      '</div>' +
+      '<div class="feed-actions">' +
+        '<button class="btn btn-xs btn-secondary" onclick="toggleFeed(' + f.id + ')">' +
+          '<i data-lucide="' + (f.active ? 'pause' : 'play') + '" class="btn-icon"></i> ' + (f.active ? 'Disable' : 'Enable') +
+        '</button>' +
+        '<button class="btn btn-xs btn-danger" onclick="deleteFeed(' + f.id + ')"><i data-lucide="trash-2" class="btn-icon"></i> Delete</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  refreshIcons();
 }
 
-// Hide feed add form (feeds managed via GitHub repo)
-document.getElementById('btn-add-feed').addEventListener('click', () => {
-  toast('Feeds are managed via feeds.json in the GitHub repo. Edit the file and push.', 'success');
+document.getElementById('btn-add-feed').addEventListener('click', async function () {
+  var name = document.getElementById('feed-name').value.trim();
+  var url = document.getElementById('feed-url').value.trim();
+  if (!url) { toast('Please enter a feed URL', 'error'); return; }
+  try {
+    await api('/api/feeds', {
+      method: 'POST',
+      body: JSON.stringify({ name: name || url, url: url })
+    });
+    document.getElementById('feed-name').value = '';
+    document.getElementById('feed-url').value = '';
+    loadFeeds();
+    loadStats();
+    toast('Feed added');
+  } catch (e) {
+    toast('Failed to add feed: ' + e.message, 'error');
+  }
 });
 
-// Init
-loadResults();
+window.toggleFeed = async function (id) {
+  try {
+    await api('/api/feeds/' + id + '/toggle', { method: 'POST' });
+    loadFeeds();
+    loadStats();
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+};
+
+window.deleteFeed = async function (id) {
+  try {
+    await api('/api/feeds/' + id, { method: 'DELETE' });
+    loadFeeds();
+    loadStats();
+    toast('Feed removed');
+  } catch (e) {
+    toast('Failed: ' + e.message, 'error');
+  }
+};
+
+// ===== OPML Import =====
+document.getElementById('btn-import-opml').addEventListener('click', function () {
+  document.getElementById('opml-file-input').click();
+});
+
+document.getElementById('opml-file-input').addEventListener('change', async function (e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var btn = document.getElementById('btn-import-opml');
+  btn.disabled = true;
+  btn.innerHTML = '<i data-lucide="loader" class="btn-icon spinner-inline"></i> Importing...';
+  refreshIcons();
+
+  try {
+    var formData = new FormData();
+    formData.append('file', file);
+    var res = await fetch(API + '/api/feeds/opml', { method: 'POST', body: formData });
+    if (!res.ok) {
+      var err = await res.json().catch(function () { return { detail: res.statusText }; });
+      throw new Error(err.detail || res.statusText);
+    }
+    var result = await res.json();
+    loadFeeds();
+    loadStats();
+    toast('Imported ' + result.added + ' feed(s) (' + (result.skipped_duplicates || 0) + ' duplicates skipped)');
+  } catch (e) {
+    toast('OPML import failed: ' + e.message, 'error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i data-lucide="upload" class="btn-icon"></i> Import OPML';
+  refreshIcons();
+  e.target.value = '';
+});
+
+// ===== Feed Stats =====
+async function loadFeedStats() {
+  try {
+    var data = await api('/api/feed-stats');
+    renderFeedStats(data);
+  } catch (e) {
+    document.getElementById('feedstats-body').innerHTML = '<tr><td colspan="6" class="empty-cell">Failed to load feed stats</td></tr>';
+    document.getElementById('feedstats-overall').innerHTML = '';
+  }
+}
+
+function getFeedTip(rate) {
+  if (rate === 0) return 'No data yet';
+  if (rate >= 60) return 'Great source';
+  if (rate >= 30) return 'Decent — review';
+  if (rate >= 10) return 'Low signal';
+  return 'Mostly noise';
+}
+
+function renderFeedStats(data) {
+  var feedsArr = data.feeds;
+  var overall = data.overall;
+  var overallEl = document.getElementById('feedstats-overall');
+
+  if (overall.total_entries === 0) {
+    overallEl.innerHTML = '<p style="color:var(--text-muted);padding:16px 0;">No results yet — run a scan to see per-feed statistics.</p>';
+  } else {
+    overallEl.innerHTML =
+      '<div class="feedstats-summary">' +
+        '<div class="feedstat"><span class="feedstat-num">' + overall.active_feeds + '</span><span class="feedstat-label">Active Feeds</span></div>' +
+        '<div class="feedstat"><span class="feedstat-num">' + overall.total_entries + '</span><span class="feedstat-label">Total Entries</span></div>' +
+        '<div class="feedstat accepted"><span class="feedstat-num">' + overall.total_accepted + '</span><span class="feedstat-label">Accepted (&ge;3)</span></div>' +
+        '<div class="feedstat rejected"><span class="feedstat-num">' + overall.total_rejected + '</span><span class="feedstat-label">Rejected (&lt;3)</span></div>' +
+        '<div class="feedstat"><span class="feedstat-num">' + overall.overall_acceptance_rate + '%</span><span class="feedstat-label">Acceptance Rate</span></div>' +
+      '</div>';
+  }
+
+  var body = document.getElementById('feedstats-body');
+  if (feedsArr.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" class="empty-cell">No feeds configured</td></tr>';
+    return;
+  }
+
+  body.innerHTML = feedsArr.map(function (f) {
+    var rateClass = f.acceptance_rate >= 50 ? 'rate-good' : f.acceptance_rate >= 20 ? 'rate-ok' : 'rate-poor';
+    var badge = f.active
+      ? '<span class="feed-badge active">Active</span>'
+      : '<span class="feed-badge inactive">Paused</span>';
+    return '<tr>' +
+      '<td><strong>' + htmlEsc(f.name) + '</strong> ' + badge + '</td>' +
+      '<td>' + f.total_entries + '</td>' +
+      '<td>' + f.accepted + '</td>' +
+      '<td>' + f.rejected + '</td>' +
+      '<td><span class="rate-badge ' + rateClass + '">' + f.acceptance_rate + '%</span></td>' +
+      '<td class="feedstats-tip">' + getFeedTip(f.acceptance_rate) + '</td>' +
+    '</tr>';
+  }).join('');
+}
+
+// ===== Spinner animation for inline buttons =====
+var spinnerStyle = document.createElement('style');
+spinnerStyle.textContent =
+  '.spinner-inline { animation: spin 0.7s linear infinite; }' +
+  '@keyframes spin { to { transform: rotate(360deg); } }';
+document.head.appendChild(spinnerStyle);
+
+// ===== Init =====
 loadStats();
+refreshIcons();

@@ -4,7 +4,6 @@ const API = window.location.origin;
 // ===== State =====
 let results = [];
 let feeds = [];
-let bookmarks = new Set();
 
 // ===== View Switching =====
 document.querySelectorAll('.nav-btn').forEach(btn => {
@@ -15,7 +14,6 @@ document.querySelectorAll('.nav-btn').forEach(btn => {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.getElementById(`view-${view}`).classList.add('active');
     if (view === 'dashboard') loadResults();
-    if (view === 'bookmarked') loadBookmarks();
     if (view === 'feeds') loadFeeds();
   });
 });
@@ -69,12 +67,6 @@ async function loadResults() {
     results = [];
     renderResults();
   }
-  // Also load bookmarks to sync star state
-  try {
-    const bmData = await api('/api/bookmarks');
-    bookmarks = new Set((bmData.results || []).map(r => r.id));
-    renderResults();
-  } catch { /* ignore */ }
 }
 
 function renderResults() {
@@ -122,133 +114,12 @@ function renderResults() {
         </td>
         <td><span class="deadline-badge ${dlClass}">${esc(dlText)}</span></td>
         <td><span style="font-size:12px;color:var(--text-muted)">${esc(r.source_feed || '—')}</span></td>
-        <td>
-          <a href="${esc(r.link)}" target="_blank" class="btn btn-sm btn-secondary">Open</a>
-          <button class="btn btn-sm btn-bookmark ${bookmarks.has(r.id) ? 'bookmarked' : ''}" onclick="toggleBookmark(${r.id})" title="Bookmark this scholarship">
-            ${bookmarks.has(r.id) ? '★' : '☆'}
-          </button>
-          <button type="button" class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="deleteResult(${r.id})" title="Delete this entry">🗑 Delete</button>
-        </td>
+        <td><a href="${esc(r.link)}" target="_blank" class="btn btn-sm btn-secondary">Open</a></td>
       </tr>
     `;
   }).join('');
 }
 
-// ===== Bookmarks =====
-async function loadBookmarks() {
-  try {
-    const data = await api('/api/bookmarks');
-    const list = data.results || [];
-    bookmarks = new Set(list.map(r => r.id));
-    renderBookmarks(list);
-  } catch {
-    bookmarks = new Set();
-    renderBookmarks([]);
-  }
-}
-
-function renderBookmarks(bookmarkedResults) {
-  window._bookmarkedResults = bookmarkedResults;
-  const empty = document.getElementById('bookmarked-empty');
-  const wrap = document.getElementById('bookmarked-results');
-  const body = document.getElementById('bookmarked-body');
-  const count = document.getElementById('bookmarked-count');
-
-  count.textContent = `${bookmarkedResults.length} saved`;
-
-  if (bookmarkedResults.length === 0) {
-    empty.style.display = '';
-    wrap.style.display = 'none';
-    return;
-  }
-
-  empty.style.display = 'none';
-  wrap.style.display = '';
-
-  body.innerHTML = bookmarkedResults.map(r => {
-    const dlClass = getDeadlineClass(r.deadline);
-    const dlText = r.deadline || 'Unknown';
-    return `
-      <tr>
-        <td><div class="score-badge score-${r.score}">${r.score}/4</div></td>
-        <td>
-          <div class="result-title" onclick="showDetailById(${r.id})">${esc(r.title)}</div>
-          <div class="result-source">${esc(r.source_feed || '')}</div>
-        </td>
-        <td><span class="deadline-badge ${dlClass}">${esc(dlText)}</span></td>
-        <td><span style="font-size:12px;color:var(--text-muted)">${esc(r.source_feed || '—')}</span></td>
-        <td>
-          <a href="${esc(r.link)}" target="_blank" class="btn btn-sm btn-secondary">Open</a>
-          <button class="btn btn-sm btn-bookmark bookmarked" onclick="toggleBookmark(${r.id})" title="Remove bookmark">★</button>
-          <button type="button" class="btn btn-sm btn-danger" style="margin-left:8px;" onclick="deleteResult(${r.id})" title="Delete this entry">🗑 Delete</button>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-async function toggleBookmark(resultId) {
-  try {
-    const data = await api('/api/bookmarks/toggle', {
-      method: 'POST',
-      body: JSON.stringify({ result_id: resultId }),
-    });
-    if (data.bookmarked) {
-      bookmarks.add(resultId);
-      toast('Bookmarked');
-    } else {
-      bookmarks.delete(resultId);
-      toast('Bookmark removed');
-    }
-    // Re-render current view
-    const activeView = document.querySelector('.nav-btn.active').dataset.view;
-    if (activeView === 'dashboard') renderResults();
-    if (activeView === 'bookmarked') loadBookmarks();
-  } catch (e) {
-    toast(`Bookmark failed: ${e.message}`, 'error');
-  }
-}
-
-// ===== Delete =====
-async function deleteResult(id) {
-  if (!confirm('Delete this scholarship entry?')) return;
-  try {
-    await api(`/api/results/${id}`, { method: 'DELETE' });
-    bookmarks.delete(id);
-    results = results.filter(r => r.id !== id);
-    toast('Entry deleted');
-    const activeView = document.querySelector('.nav-btn.active').dataset.view;
-    if (activeView === 'dashboard') renderResults();
-    if (activeView === 'bookmarked') loadBookmarks();
-  } catch (e) {
-    toast(`Delete failed: ${e.message}`, 'error');
-  }
-}
-
-async function clearDatabase() {
-  if (!confirm('Clear ALL results and scan logs? This cannot be undone.')) return;
-  try {
-    const data = await api('/api/clear-db', { method: 'POST' });
-    results = [];
-    bookmarks = new Set();
-    const msg = data.deleted_results > 0
-      ? `Cleared ${data.deleted_results} results and ${data.deleted_logs} scan logs`
-      : 'Database is already empty — nothing to clear';
-    toast(msg);
-    const activeView = document.querySelector('.nav-btn.active').dataset.view;
-    if (activeView === 'dashboard') renderResults();
-    if (activeView === 'bookmarked') loadBookmarks();
-    loadStats();
-  } catch (e) {
-    toast(`Clear failed: ${e.message}`, 'error');
-  }
-}
-
-window.toggleBookmark = toggleBookmark;
-window.deleteResult = deleteResult;
-window.clearDatabase = clearDatabase;
-
-// ===== Helpers =====
 function getDeadlineClass(dl) {
   if (!dl) return 'deadline-unknown';
   const d = new Date(dl);
@@ -269,20 +140,6 @@ function esc(s) {
 window.showDetail = function(idx) {
   const r = results[idx];
   if (!r) return;
-  showDetailForResult(r);
-};
-
-window.showDetailById = function(id) {
-  const r = results.find(x => x.id === id);
-  if (r) { showDetailForResult(r); return; }
-  // Fallback: try bookmarked results
-  if (window._bookmarkedResults) {
-    const bm = window._bookmarkedResults.find(x => x.id === id);
-    if (bm) { showDetailForResult(bm); return; }
-  }
-};
-
-function showDetailForResult(r) {
   document.getElementById('modal-score').innerHTML = `<div class="score-badge score-${r.score}" style="width:56px;height:56px;font-size:20px">${r.score}/4</div>`;
   document.getElementById('modal-title').textContent = r.title;
   document.getElementById('modal-deadline').textContent = r.deadline ? `Deadline: ${r.deadline}` : 'Deadline: Unknown';
@@ -433,14 +290,6 @@ document.getElementById('btn-refresh').addEventListener('click', () => {
   loadStats();
 });
 
-document.getElementById('btn-clear-db').addEventListener('click', () => {
-  clearDatabase();
-});
-
-document.getElementById('btn-clear-db-feeds').addEventListener('click', () => {
-  clearDatabase();
-});
-
 // ===== Feeds Management =====
 async function loadFeeds() {
   try {
@@ -473,7 +322,7 @@ function renderFeeds() {
       </div>
       <div class="feed-actions">
         <button class="btn btn-sm btn-secondary" onclick="toggleFeed(${f.id})">${f.active ? 'Disable' : 'Enable'}</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteFeed(${f.id})">✕ Delete</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteFeed(${f.id})">Remove</button>
       </div>
     </div>
   `).join('');
@@ -559,8 +408,6 @@ document.getElementById('opml-file-input').addEventListener('change', async (e) 
   // Reset file input so the same file can be re-selected
   e.target.value = '';
 });
-
-
 
 // ===== Init =====
 loadStats();

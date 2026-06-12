@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ScholarWatch — Scholarship Screening Pipeline</title>
   <link rel="stylesheet" href="style.css" />
+  <script src="https://unpkg.com/lucide@latest" defer></script>
 </head>
 <body>
   <div id="app">
@@ -12,37 +13,44 @@
     <nav class="nav">
       <div class="nav-inner">
         <div class="logo">
-          <span class="logo-icon">🎓</span>
+          <i data-lucide="graduation-cap" class="logo-icon"></i>
           <span class="logo-text">ScholarWatch</span>
         </div>
-        <div class="nav-links">
+        <button class="nav-hamburger" id="nav-hamburger" aria-label="Menu">
+          <span class="hamburger-line"></span>
+          <span class="hamburger-line"></span>
+          <span class="hamburger-line"></span>
+        </button>
+        <div class="nav-overlay" id="nav-overlay"></div>
+        <div class="nav-drawer" id="nav-drawer">
           <button class="nav-btn active" data-view="pipeline">How It Works</button>
           <button class="nav-btn" data-view="dashboard">Dashboard</button>
           <button class="nav-btn" data-view="bookmarked">Bookmarked</button>
           <button class="nav-btn" data-view="feeds">Manage Feeds</button>
+          <button class="nav-btn" data-view="feedstats">Feed Stats</button>
         </div>
       </div>
     </nav>
 
-    <!-- Hero -->
-    <header class="hero">
-      <div class="hero-inner">
-        <h1>Automated Scholarship Screening</h1>
-        <p class="hero-sub">ScholarWatch scans RSS feeds daily, filters for fully-funded health opportunities open to LMIC applicants, and delivers AI-powered summaries — so you never miss a deadline.</p>
-        <div class="hero-stats" id="hero-stats">
-          <div class="stat">
+    <!-- Page Header -->
+    <header class="page-header">
+      <div class="container">
+        <h1 class="page-title">Automated Scholarship Screening</h1>
+        <p class="page-sub">ScholarWatch scans RSS feeds daily, filters for fully-funded health opportunities open to LMIC applicants, and delivers AI-powered summaries — so you never miss a deadline.</p>
+        <div class="stats-row" id="hero-stats">
+          <div class="stat-card">
             <span class="stat-num" id="stat-feeds">—</span>
             <span class="stat-label">Active Feeds</span>
           </div>
-          <div class="stat">
+          <div class="stat-card">
             <span class="stat-num" id="stat-screened">—</span>
             <span class="stat-label">Screened</span>
           </div>
-          <div class="stat">
+          <div class="stat-card">
             <span class="stat-num" id="stat-accepted">—</span>
             <span class="stat-label">Accepted</span>
           </div>
-          <div class="stat">
+          <div class="stat-card">
             <span class="stat-num" id="stat-lastrun">—</span>
             <span class="stat-label">Last Run</span>
           </div>
@@ -56,123 +64,91 @@
         <h2 class="section-title">The Pipeline</h2>
         <p class="section-sub">Eight steps from raw RSS to actionable scholarship alerts.</p>
         <div class="pipeline">
-
           <div class="step-card" data-step="1">
             <div class="step-number">1</div>
             <div class="step-content">
-              <div class="step-icon">📡</div>
+              <i data-lucide="rss" class="step-icon"></i>
               <h3>RSS Fetching</h3>
               <p>Reads active feed URLs from the database, parses each with feedparser, cleans HTML from descriptions, and returns a flat list of entries.</p>
-              <div class="step-tag tag-input">Input: Feed URLs</div>
-              <div class="step-tag tag-output">Output: Raw entries</div>
+              <div class="step-tags"><span class="step-tag tag-input">Input: Feed URLs</span><span class="step-tag tag-output">Output: Raw entries</span></div>
             </div>
           </div>
-
-          <div class="step-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
-
+          <div class="step-connector"><div class="connector-line"></div><i data-lucide="chevron-down" class="connector-icon"></i></div>
           <div class="step-card" data-step="2">
             <div class="step-number">2</div>
             <div class="step-content">
-              <div class="step-icon">🔄</div>
+              <i data-lucide="git-merge" class="step-icon"></i>
               <h3>Deduplication</h3>
               <p>Removes entries with identical link + title combinations within the same run. Prevents the same opportunity from being processed twice.</p>
-              <div class="step-tag tag-filter">Filter: link + title hash</div>
+              <div class="step-tags"><span class="step-tag tag-filter">Filter: link + title hash</span></div>
             </div>
           </div>
-
-          <div class="step-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
-
+          <div class="step-connector"><div class="connector-line"></div><i data-lucide="chevron-down" class="connector-icon"></i></div>
           <div class="step-card highlight" data-step="3">
             <div class="step-number">3</div>
             <div class="step-content">
-              <div class="step-icon">🎯</div>
+              <i data-lucide="target" class="step-icon"></i>
               <h3>Smart Filtering</h3>
               <p>Each entry is scored on <strong>4 criteria</strong>. Minimum score to accept: <strong>3/4</strong>.</p>
               <div class="criteria-grid">
-                <div class="criterion">
-                  <span class="criterion-icon">💰</span>
-                  <span>Fully Funded</span>
-                </div>
-                <div class="criterion">
-                  <span class="criterion-icon">🌍</span>
-                  <span>Open to LMIC / Everyone</span>
-                </div>
-                <div class="criterion">
-                  <span class="criterion-icon">🏥</span>
-                  <span>Health-Related / All Courses</span>
-                </div>
-                <div class="criterion">
-                  <span class="criterion-icon">📅</span>
-                  <span>Valid Deadline</span>
-                </div>
+                <div class="criterion"><i data-lucide="banknote" class="criterion-icon-sm"></i><span>Fully Funded</span></div>
+                <div class="criterion"><i data-lucide="globe" class="criterion-icon-sm"></i><span>Open to LMIC / Everyone</span></div>
+                <div class="criterion"><i data-lucide="heart-pulse" class="criterion-icon-sm"></i><span>Health-Related / All Courses</span></div>
+                <div class="criterion"><i data-lucide="calendar-check" class="criterion-icon-sm"></i><span>Valid Deadline</span></div>
               </div>
-              <div class="step-note">
-                <strong>Edge cases (2/4):</strong> Vague-but-promising entries are scraped and re-evaluated by AI with full page content.
-              </div>
+              <div class="step-note"><strong>Edge cases (2/4):</strong> Vague-but-promising entries are scraped and re-evaluated by AI with full page content.</div>
             </div>
           </div>
-
-          <div class="step-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
-
+          <div class="step-connector"><div class="connector-line"></div><i data-lucide="chevron-down" class="connector-icon"></i></div>
           <div class="step-card" data-step="4">
             <div class="step-number">4</div>
             <div class="step-content">
-              <div class="step-icon">🕷️</div>
+              <i data-lucide="globe" class="step-icon"></i>
               <h3>Concurrent Scraping</h3>
               <p>All accepted entry URLs are scraped concurrently before any AI summary calls. This batches network I/O for efficiency.</p>
-              <div class="step-tag tag-perf">Async: up to 10 concurrent</div>
+              <div class="step-tags"><span class="step-tag tag-perf">Async: up to 10 concurrent</span></div>
             </div>
           </div>
-
-          <div class="step-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
-
+          <div class="step-connector"><div class="connector-line"></div><i data-lucide="chevron-down" class="connector-icon"></i></div>
           <div class="step-card" data-step="5">
             <div class="step-number">5</div>
             <div class="step-content">
-              <div class="step-icon">🤖</div>
+              <i data-lucide="sparkles" class="step-icon"></i>
               <h3>Deep Summary</h3>
               <p><strong>4/4 matches</strong> get a full AI-generated 6-sentence summary from scraped page content. <strong>3/4 matches</strong> get the cleaned RSS description with deadline extracted — no AI call to save tokens.</p>
-              <div class="step-tag tag-ai">AI: only for 4/4 scores</div>
-              <div class="step-tag tag-perf">Token-efficient</div>
+              <div class="step-tags"><span class="step-tag tag-ai">AI: only for 4/4 scores</span><span class="step-tag tag-perf">Token-efficient</span></div>
             </div>
           </div>
-
-          <div class="step-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
-
+          <div class="step-connector"><div class="connector-line"></div><i data-lucide="chevron-down" class="connector-icon"></i></div>
           <div class="step-card" data-step="6">
             <div class="step-number">6</div>
             <div class="step-content">
-              <div class="step-icon">📅</div>
+              <i data-lucide="calendar" class="step-icon"></i>
               <h3>Deadline Extraction</h3>
               <p>Regex scans raw page text for date patterns <em>before</em> the AI prompt runs. Found date is passed to AI as a confirmed hint, improving accuracy.</p>
-              <div class="step-tag tag-output">Output: ISO date or "Not found"</div>
+              <div class="step-tags"><span class="step-tag tag-output">Output: ISO date or "Not found"</span></div>
             </div>
           </div>
-
-          <div class="step-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
-
+          <div class="step-connector"><div class="connector-line"></div><i data-lucide="chevron-down" class="connector-icon"></i></div>
           <div class="step-card" data-step="7">
             <div class="step-number">7</div>
             <div class="step-content">
-              <div class="step-icon">💾</div>
+              <i data-lucide="database" class="step-icon"></i>
               <h3>Save to Database</h3>
               <p>Screened results are persisted to SQLite with full metadata: title, link, score, summary, deadline, source feed, and timestamp.</p>
-              <div class="step-tag tag-output">Storage: SQLite</div>
+              <div class="step-tags"><span class="step-tag tag-output">Storage: SQLite</span></div>
             </div>
           </div>
-
-          <div class="step-connector"><div class="connector-line"></div><div class="connector-arrow">▼</div></div>
-
+          <div class="step-connector"><div class="connector-line"></div><i data-lucide="chevron-down" class="connector-icon"></i></div>
           <div class="step-card" data-step="8">
             <div class="step-number">8</div>
             <div class="step-content">
-              <div class="step-icon">⏰</div>
+              <i data-lucide="clock" class="step-icon"></i>
               <h3>Daily Run</h3>
               <p>The entire pipeline runs on a scheduled trigger. New results are surfaced in the dashboard; previously-seen entries are skipped.</p>
-              <div class="step-tag tag-perf">Schedule: daily</div>
+              <div class="step-tags"><span class="step-tag tag-perf">Schedule: daily</span></div>
             </div>
           </div>
-
         </div>
       </div>
     </section>
@@ -181,41 +157,62 @@
     <section class="view" id="view-dashboard">
       <div class="container">
         <div class="dash-header">
-          <h2 class="section-title">Scholarship Results</h2>
+          <div>
+            <h2 class="section-title">Scholarship Results</h2>
+            <span class="result-count" id="result-count" style="display:none"></span>
+          </div>
           <div class="dash-actions">
-            <button class="btn btn-primary" id="btn-run-scan">
-              <span class="btn-icon">▶</span> Run Scan Now
-            </button>
-            <button class="btn btn-secondary" id="btn-refresh">
-              <span class="btn-icon">↻</span> Refresh
-            </button>
-            <button type="button" class="btn btn-danger" id="btn-clear-db" style="margin-left:8px;" onclick="clearDatabase()">
-              <span class="btn-icon">🗑</span> Clear Database
-            </button>
+            <button class="btn btn-primary" id="btn-run-scan"><i data-lucide="play" class="btn-icon"></i> Run Scan Now</button>
+            <button class="btn btn-secondary" id="btn-refresh"><i data-lucide="refresh-cw" class="btn-icon"></i> Refresh</button>
+            <button class="btn btn-secondary" onclick="exportCSV()" title="Download as CSV"><i data-lucide="file-spreadsheet" class="btn-icon"></i> CSV</button>
+            <button class="btn btn-secondary" onclick="exportWord()" title="Download as Word"><i data-lucide="file-text" class="btn-icon"></i> Word</button>
+            <button class="btn btn-danger" id="btn-clear-db" onclick="clearDatabase()"><i data-lucide="trash-2" class="btn-icon"></i> Clear</button>
           </div>
         </div>
 
         <div class="filters-bar">
-          <select id="filter-score" class="filter-select">
-            <option value="">All Scores</option>
-            <option value="4">4/4 — Perfect Match</option>
-            <option value="3">3/4 — Strong Match</option>
-          </select>
-          <select id="filter-deadline" class="filter-select">
-            <option value="">All Deadlines</option>
-            <option value="upcoming">Upcoming (next 30 days)</option>
-            <option value="open">Still Open</option>
-            <option value="expired">Expired</option>
-          </select>
-          <input type="text" id="filter-search" class="filter-input" placeholder="Search titles..." />
+          <div class="filter-group">
+            <label class="filter-label" for="filter-score">Score</label>
+            <select id="filter-score">
+              <option value="">All Scores</option>
+              <option value="4">4/4 — Excellent</option>
+              <option value="3">3/4 — Good</option>
+              <option value="2">2/4 — Marginal</option>
+              <option value="1">1/4 — Poor</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="filter-deadline">Deadline</label>
+            <select id="filter-deadline">
+              <option value="">All Deadlines</option>
+              <option value="confirmed">With Deadline</option>
+              <option value="unknown">Unknown</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label" for="sort-by">Sort</label>
+            <select id="sort-by">
+              <option value="score">By Score</option>
+              <option value="recent">Newest</option>
+            </select>
+          </div>
+          <div class="filter-group filter-search-group">
+            <label class="filter-label sr-only" for="filter-search">Search</label>
+            <div class="search-wrap">
+              <i data-lucide="search" class="search-icon"></i>
+              <input type="text" id="filter-search" placeholder="Search titles..." />
+            </div>
+          </div>
         </div>
 
-        <!-- Scan Progress (SSE streaming log) -->
-        <div class="loading-state" id="dash-loading" style="display:none;">
-          <div class="spinner"></div>
-          <p id="scan-status">Starting...</p>
-          <div class="progress-bar" id="scan-progress-bar" style="display:none;">
-            <div class="progress-fill progress-indeterminate"></div>
+        <!-- Scan Progress -->
+        <div id="dash-loading" style="display:none;">
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p id="scan-status" class="loading-status">Starting...</p>
+            <div class="progress-bar" id="scan-progress-bar" style="display:none;">
+              <div class="progress-fill progress-indeterminate"></div>
+            </div>
           </div>
           <div class="scan-log" id="scan-log">
             <div class="scan-log-body" id="scan-log-body"></div>
@@ -223,39 +220,48 @@
         </div>
 
         <!-- Empty State -->
-        <div class="empty-state" id="dash-empty">
-          <div class="empty-icon">🔍</div>
-          <h3>No results yet</h3>
-          <p>Add some RSS feeds and run your first scan to discover scholarships.</p>
+        <div id="dash-empty">
+          <div class="empty-state">
+            <i data-lucide="inbox" class="empty-icon"></i>
+            <p class="empty-title">No results yet</p>
+            <p class="empty-hint">Add some RSS feeds and run your first scan to discover scholarships.</p>
+            <button class="btn btn-primary" id="btn-empty-scan"><i data-lucide="play" class="btn-icon"></i> Run First Scan</button>
+          </div>
         </div>
 
-        <!-- Results Table -->
-        <div class="results-wrap" id="dash-results" style="display:none;">
-          <table class="results-table">
-            <thead>
-              <tr>
-                <th>Score</th>
-                <th>Title</th>
-                <th>Deadline</th>
-                <th>Source</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="results-body"></tbody>
-          </table>
+        <!-- Results -->
+        <div id="dash-results" style="display:none;">
+          <!-- Desktop Table -->
+          <div class="results-table-wrap">
+            <table class="results-table" id="results-table">
+              <thead>
+                <tr>
+                  <th>Score</th>
+                  <th>Title</th>
+                  <th>Deadline</th>
+                  <th>Date</th>
+                  <th>Source</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="results-body"></tbody>
+            </table>
+          </div>
+          <!-- Mobile Cards -->
+          <div class="results-cards" id="results-cards"></div>
         </div>
 
-        <!-- Result Detail Modal -->
+        <!-- Detail Modal -->
         <div class="modal-overlay" id="modal-overlay" style="display:none;">
           <div class="modal">
-            <button class="modal-close" id="modal-close">&times;</button>
+            <button class="modal-close" id="modal-close"><i data-lucide="x"></i></button>
             <div class="modal-score" id="modal-score"></div>
             <h2 id="modal-title"></h2>
             <div class="modal-meta">
-              <span id="modal-deadline"></span>
-              <span id="modal-source"></span>
-              <a id="modal-link" href="#" target="_blank">View Original →</a>
+              <span class="modal-meta-item" id="modal-deadline"></span>
+              <span class="modal-meta-item" id="modal-source"></span>
             </div>
+            <a class="modal-link" id="modal-link" href="#" target="_blank"><i data-lucide="external-link" class="modal-link-icon"></i> View Original</a>
             <div class="modal-summary" id="modal-summary"></div>
             <div class="modal-criteria" id="modal-criteria"></div>
           </div>
@@ -267,29 +273,28 @@
     <section class="view" id="view-bookmarked">
       <div class="container">
         <div class="dash-header">
-          <h2 class="section-title">Bookmarked Scholarships</h2>
-          <span style="color:var(--text-muted);font-size:14px" id="bookmarked-count">0 saved</span>
+          <div>
+            <h2 class="section-title">Bookmarked Scholarships</h2>
+            <span class="result-count" id="bookmarked-count">0 saved</span>
+          </div>
         </div>
-
-        <div class="empty-state" id="bookmarked-empty">
-          <div class="empty-icon">⭐</div>
-          <h3>No bookmarks yet</h3>
-          <p>Click the star button on any scholarship to save it here for later.</p>
+        <div id="bookmarked-empty">
+          <div class="empty-state">
+            <i data-lucide="star" class="empty-icon"></i>
+            <p class="empty-title">No bookmarks yet</p>
+            <p class="empty-hint">Click the star button on any scholarship to save it here.</p>
+          </div>
         </div>
-
-        <div class="results-wrap" id="bookmarked-results" style="display:none;">
-          <table class="results-table">
-            <thead>
-              <tr>
-                <th>Score</th>
-                <th>Title</th>
-                <th>Deadline</th>
-                <th>Source</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="bookmarked-body"></tbody>
-          </table>
+        <div id="bookmarked-results" style="display:none;">
+          <div class="results-table-wrap">
+            <table class="results-table" id="bookmarked-table">
+              <thead>
+                <tr><th>Score</th><th>Title</th><th>Deadline</th><th>Date</th><th>Source</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="bookmarked-body"></tbody>
+            </table>
+          </div>
+          <div class="results-cards" id="bookmarked-cards"></div>
         </div>
       </div>
     </section>
@@ -299,38 +304,57 @@
       <div class="container">
         <h2 class="section-title">Manage Feeds</h2>
         <p class="section-sub">Add RSS feed URLs to monitor for scholarship opportunities.</p>
-
         <div class="feed-form">
-          <input type="text" id="feed-name" class="feed-input" placeholder="Feed name (e.g. DAAD Scholarships)" />
-          <input type="url" id="feed-url" class="feed-input feed-url-input" placeholder="https://example.com/feed.xml" />
-          <button class="btn btn-primary" id="btn-add-feed">Add Feed</button>
-          <button class="btn btn-secondary" id="btn-import-opml" title="Import feeds from an OPML file">Import OPML</button>
+          <input type="text" id="feed-name" class="feed-input" placeholder="Feed name (e.g. DAAD Scholarships)" aria-label="Feed name" />
+          <input type="url" id="feed-url" class="feed-input feed-url-input" placeholder="https://example.com/feed.xml" aria-label="Feed URL" />
+          <button class="btn btn-primary" id="btn-add-feed"><i data-lucide="plus" class="btn-icon"></i> Add Feed</button>
+          <button class="btn btn-secondary" id="btn-import-opml"><i data-lucide="upload" class="btn-icon"></i> Import OPML</button>
           <input type="file" id="opml-file-input" accept=".opml,.xml" style="display:none" />
         </div>
-
         <div class="feeds-list" id="feeds-list">
           <div class="empty-state">
-            <div class="empty-icon">📡</div>
-            <h3>No feeds configured</h3>
-            <p>Add your first RSS feed URL above to start monitoring.</p>
+            <i data-lucide="rss" class="empty-icon"></i>
+            <p class="empty-title">No feeds configured</p>
+            <p class="empty-hint">Add your first RSS feed URL above to start monitoring.</p>
           </div>
         </div>
-
-        <div style="display:flex;gap:8px;margin-top:20px;">
-          <button type="button" class="btn btn-danger" id="btn-clear-db-feeds" onclick="clearDatabase()">
-            <span class="btn-icon">🗑</span> Clear Database
-          </button>
+        <div class="feed-form-actions">
+          <button class="btn btn-danger" id="btn-clear-db-feeds" onclick="clearDatabase()"><i data-lucide="trash-2" class="btn-icon"></i> Clear Database</button>
         </div>
       </div>
     </section>
 
+    <!-- Feed Stats View -->
+    <section class="view" id="view-feedstats">
+      <div class="container">
+        <h2 class="section-title">Source Feed Stats</h2>
+        <p class="section-sub">See which feeds produce the best scholarship matches and which are mostly noise.</p>
+        <div id="feedstats-overall"></div>
+        <div class="results-table-wrap">
+          <table class="results-table" id="feedstats-table">
+            <thead>
+              <tr>
+                <th>Feed</th>
+                <th>Total</th>
+                <th>Accepted</th>
+                <th>Rejected</th>
+                <th>Rate</th>
+                <th>Verdict</th>
+              </tr>
+            </thead>
+            <tbody id="feedstats-body">
+              <tr><td colspan="6" class="empty-cell">Loading...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
 
     <!-- Footer -->
     <footer class="footer">
       <p>ScholarWatch — Automated health scholarship screening for LMIC applicants</p>
     </footer>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="app.v3.js"></script>
+  <script src="app.v3.js?v=8&cb=202512120000"></script>
 </body>
 </html>
